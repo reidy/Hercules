@@ -342,6 +342,12 @@ struct {
 	struct HPMHookPoint *HP_chr_online_data_cleanup_post;
 	struct HPMHookPoint *HP_chr_sql_config_read_pre;
 	struct HPMHookPoint *HP_chr_sql_config_read_post;
+	struct HPMHookPoint *HP_chr_sql_config_read_registry_pre;
+	struct HPMHookPoint *HP_chr_sql_config_read_registry_post;
+	struct HPMHookPoint *HP_chr_sql_config_read_pc_pre;
+	struct HPMHookPoint *HP_chr_sql_config_read_pc_post;
+	struct HPMHookPoint *HP_chr_sql_config_read_guild_pre;
+	struct HPMHookPoint *HP_chr_sql_config_read_guild_post;
 	struct HPMHookPoint *HP_chr_config_read_pre;
 	struct HPMHookPoint *HP_chr_config_read_post;
 	struct HPMHookPoint *HP_chr_config_read_database_pre;
@@ -522,8 +528,6 @@ struct {
 	struct HPMHookPoint *HP_inter_savereg_post;
 	struct HPMHookPoint *HP_inter_accreg_fromsql_pre;
 	struct HPMHookPoint *HP_inter_accreg_fromsql_post;
-	struct HPMHookPoint *HP_inter_config_read_pre;
-	struct HPMHookPoint *HP_inter_config_read_post;
 	struct HPMHookPoint *HP_inter_vlog_pre;
 	struct HPMHookPoint *HP_inter_vlog_post;
 	struct HPMHookPoint *HP_inter_init_sql_pre;
@@ -540,6 +544,10 @@ struct {
 	struct HPMHookPoint *HP_inter_parse_frommap_post;
 	struct HPMHookPoint *HP_inter_final_pre;
 	struct HPMHookPoint *HP_inter_final_post;
+	struct HPMHookPoint *HP_inter_config_read_pre;
+	struct HPMHookPoint *HP_inter_config_read_post;
+	struct HPMHookPoint *HP_inter_config_read_connection_pre;
+	struct HPMHookPoint *HP_inter_config_read_connection_post;
 	struct HPMHookPoint *HP_inter_mail_sql_init_pre;
 	struct HPMHookPoint *HP_inter_mail_sql_init_post;
 	struct HPMHookPoint *HP_inter_mail_sql_final_pre;
@@ -1769,6 +1777,12 @@ struct {
 	int HP_chr_online_data_cleanup_post;
 	int HP_chr_sql_config_read_pre;
 	int HP_chr_sql_config_read_post;
+	int HP_chr_sql_config_read_registry_pre;
+	int HP_chr_sql_config_read_registry_post;
+	int HP_chr_sql_config_read_pc_pre;
+	int HP_chr_sql_config_read_pc_post;
+	int HP_chr_sql_config_read_guild_pre;
+	int HP_chr_sql_config_read_guild_post;
 	int HP_chr_config_read_pre;
 	int HP_chr_config_read_post;
 	int HP_chr_config_read_database_pre;
@@ -1949,8 +1963,6 @@ struct {
 	int HP_inter_savereg_post;
 	int HP_inter_accreg_fromsql_pre;
 	int HP_inter_accreg_fromsql_post;
-	int HP_inter_config_read_pre;
-	int HP_inter_config_read_post;
 	int HP_inter_vlog_pre;
 	int HP_inter_vlog_post;
 	int HP_inter_init_sql_pre;
@@ -1967,6 +1979,10 @@ struct {
 	int HP_inter_parse_frommap_post;
 	int HP_inter_final_pre;
 	int HP_inter_final_post;
+	int HP_inter_config_read_pre;
+	int HP_inter_config_read_post;
+	int HP_inter_config_read_connection_pre;
+	int HP_inter_config_read_connection_post;
 	int HP_inter_mail_sql_init_pre;
 	int HP_inter_mail_sql_init_post;
 	int HP_inter_mail_sql_final_pre;
