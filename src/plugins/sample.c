@@ -114,21 +114,24 @@ void sample_packet0f3(int fd) {
 }
 int my_pc_dropitem_storage;/* storage var */
 /* my custom prehook for pc_dropitem, checks if amount of item being dropped is higher than 1 and if so cap it to 1 and store the value of how much it was */
-int my_pc_dropitem_pre(struct map_session_data *sd,int *n,int *amount) {
+int my_pc_dropitem_pre(struct map_session_data **sd, int *n, int *amount)
+{
 	my_pc_dropitem_storage = 0;
-	if( *amount > 1 ) {
+	if (*amount > 1) {
 		my_pc_dropitem_storage = *amount;
 		*amount = 1;
 	}
 	return 0;
 }
 /* postHook receive retVal as the first param, allows posthook to act accordingly to whatever the original was going to return */
-int my_pc_dropitem_post(int retVal, struct map_session_data *sd,int *n,int *amount) {
-	if( retVal != 1 ) return retVal;/* we don't do anything if pc_dropitem didn't return 1 (success) */
-	if( my_pc_dropitem_storage ) {/* signs whether pre-hook did this */
+int my_pc_dropitem_post(int retVal, struct map_session_data **sd, int *n, int *amount)
+{
+	if (retVal != 1)
+		return retVal;/* we don't do anything if pc_dropitem didn't return 1 (success) */
+	if (my_pc_dropitem_storage) {/* signs whether pre-hook did this */
 		char output[99];
 		safesnprintf(output,99,"[ Warning ] you can only drop 1 item at a time, capped from %d to 1",my_pc_dropitem_storage);
-		clif->messagecolor_self(sd->fd, COLOR_RED, output);
+		clif->messagecolor_self((*sd)->fd, COLOR_RED, output);
 	}
 	return 1;
 }
