@@ -46,7 +46,7 @@ ALLPLUGINS = $(filter-out HPMHooking, $(basename $(wildcard *.c))) $(HPMHOOKING)
 PLUGINS = sample db2sql HPMHooking_char HPMHooking_login HPMHooking_map $(MYPLUGINS)
 
 COMMON_D = ../common
-COMMON_H = $(wildcard $(COMMON_D)/*.h)
+COMMON_H = $(wildcard $(COMMON_D)/*.h) ../plugins/HPMHooking.h
 COMMON_INCLUDE = -I..
 
 THIRDPARTY_INCLUDE = -I../../3rdparty
