@@ -66,7 +66,7 @@ int do_init(int argc, char **argv){
 	int ok;
 
 	ShowStatus("==========\n");
-	ShowStatus("TEST: %u Runs,  (%u Threads)\n", LOOPS, THRC);
+	ShowStatus("TEST: %d Runs,  (%d Threads)\n", LOOPS, THRC);
 	ShowStatus("This can take a while\n");
 	ShowStatus("\n\n");
 
@@ -91,9 +91,9 @@ int do_init(int argc, char **argv){
 
 		// Everything fine?
 		if (val != (THRC*PERINC)) {
-			printf("FAILED! (Result: %u, Expected: %u)\n",  val,  (THRC*PERINC));
+			printf("FAILED! (Result: %u, Expected: %d)\n",  val,  (THRC*PERINC));
 		} else {
-			printf("OK! (Result: %u, Expected: %u)\n", val, (THRC*PERINC));
+			printf("OK! (Result: %u, Expected: %d)\n", val, (THRC*PERINC));
 			ok++;
 		}
 
