@@ -90,6 +90,10 @@ struct {
 	struct HPMHookPoint *HP_DB_init_post;
 	struct HPMHookPoint *HP_DB_final_pre;
 	struct HPMHookPoint *HP_DB_final_post;
+	struct HPMHookPoint *HP_des_decrypt_block_pre;
+	struct HPMHookPoint *HP_des_decrypt_block_post;
+	struct HPMHookPoint *HP_des_decrypt_pre;
+	struct HPMHookPoint *HP_des_decrypt_post;
 	struct HPMHookPoint *HP_libconfig_read_pre;
 	struct HPMHookPoint *HP_libconfig_read_post;
 	struct HPMHookPoint *HP_libconfig_write_pre;
@@ -691,6 +695,10 @@ struct {
 	int HP_DB_init_post;
 	int HP_DB_final_pre;
 	int HP_DB_final_post;
+	int HP_des_decrypt_block_pre;
+	int HP_des_decrypt_block_post;
+	int HP_des_decrypt_pre;
+	int HP_des_decrypt_post;
 	int HP_libconfig_read_pre;
 	int HP_libconfig_read_post;
 	int HP_libconfig_write_pre;
@@ -1231,6 +1239,7 @@ struct {
 	struct console_interface console;
 	struct core_interface core;
 	struct db_interface DB;
+	struct des_interface des;
 	struct libconfig_interface libconfig;
 	struct login_interface login;
 	struct malloc_interface iMalloc;
