@@ -539,6 +539,8 @@ struct Battle_Config {
 	// BodyStyle
 	int min_body_style, max_body_style;
 	int save_body_style;
+
+	int display_fake_hp_when_dead;
 };
 
 /* criteria for battle_config.idletime_critera */
