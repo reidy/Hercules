@@ -28,6 +28,7 @@
 
 struct mmo_account;
 struct AccountDB;
+struct login_packet_db;
 
 enum E_LOGINSERVER_ST
 {
@@ -203,7 +204,7 @@ struct login_interface {
 	void (*login_error) (int fd, uint8 error);
 	void (*parse_ping) (int fd, struct login_session_data* sd);
 	void (*parse_client_md5) (int fd, struct login_session_data* sd);
-	bool (*parse_client_login) (int fd, struct login_session_data* sd, const char *ip);
+	bool (*client_login) (int fd, struct login_session_data *sd);
 	void (*send_coding_key) (int fd, struct login_session_data* sd);
 	void (*parse_request_coding_key) (int fd, struct login_session_data* sd);
 	void (*char_server_connection_status) (int fd, struct login_session_data* sd, uint8 status);
@@ -213,6 +214,10 @@ struct login_interface {
 	int (*config_read) (const char *cfgName);
 	char *LOGIN_CONF_NAME;
 	char *NET_CONF_NAME; ///< Network configuration filename
+
+	// lclif
+	int (*parse_packet)(struct login_packet_db *lpd, int fd, struct login_session_data *sd);
+	int (*parse_login_sub)(int fd, struct login_session_data *sd);
 };
 
 #ifdef HERCULES_CORE

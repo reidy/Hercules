@@ -51,7 +51,12 @@ struct mmo_char_server server[MAX_SERVERS]; // char server data
 // Packet DB
 #define MIN_PACKET_DB 0x0064
 #define MAX_PACKET_DB 0x08ff
+/// Packet definition helper
+#define DEFPACKET(name) enum parsefunc_rcode login_parse_ ## name (int fd, struct login_session_data *sd)
+#define packet_def(name) { PACKET_ID_ ## name, sizeof(struct PACKET_ ## name), login_parse_ ## name }
+#define packet_def2(name, len) { PACKET_ID_ ## name, (len), login_parse_ ## name }
 
+/* Enums */
 /**
  * Packets ID Enum
  */
@@ -76,6 +81,26 @@ enum login_packet_id {
 	PACKET_ID_SC_NOTIFY_BAN           = 0x0081,
 	PACKET_ID_AC_ACK_HASH             = 0x01dc,
 	PACKET_ID_AC_REFUSE_LOGIN_R2      = 0x083e,
+};
+
+/// Parse function return code
+enum parsefunc_rcode {
+	PACKET_VALID         =  1,
+	PACKET_INCOMPLETE    =  0,
+	PACKET_UNKNOWN       = -1,
+	PACKET_INVALIDLENGTH = -2,
+	PACKET_STOPPARSE     = -3,
+	PACKET_SKIP          = -4, //internal parser will skip this packet and go parser another, meant for plugins. [hemagx]
+};
+
+/* Function Typedefs */
+typedef enum parsefunc_rcode (LoginParseFunc)(int fd, struct login_session_data *sd);
+
+/* Structs */
+/// Login packet DB entry
+struct login_packet_db {
+	int16 len;             ///< Packet length
+	LoginParseFunc *pFunc; ///< Packet parsing function
 };
 
 /* Packets Structs */
@@ -239,6 +264,8 @@ struct PACKET_AC_ACK_HASH {
 struct Account_engine account_engine[] = {
 	{account_db_sql, NULL}
 };
+
+struct login_packet_db packet_db[MAX_PACKET_DB + 1];
 
 // account database
 AccountDB* accounts = NULL;
@@ -1599,27 +1626,24 @@ void login_login_error(int fd, uint8 error)
 	WFIFOSET(fd, sizeof(*packet));
 }
 
-// CA_CONNECT_INFO_CHANGED
-void login_parse_ping(int fd, struct login_session_data* sd) __attribute__((nonnull (2)));
-void login_parse_ping(int fd, struct login_session_data* sd)
+DEFPACKET(CA_CONNECT_INFO_CHANGED)
 {
-	RFIFOSKIP(fd,sizeof(struct PACKET_CA_CONNECT_INFO_CHANGED));
+	// New alive packet: structure: 0x200 <account.userid>.24B. used to verify if client is always alive.
+	return PACKET_VALID;
 }
 
-// CA_EXE_HASHCHECK
-void login_parse_client_md5(int fd, struct login_session_data* sd) __attribute__((nonnull (2)));
-void login_parse_client_md5(int fd, struct login_session_data* sd)
+DEFPACKET(CA_EXE_HASHCHECK)
 {
+	// S 0204 <md5 hash>.16B (kRO 2004-05-31aSakexe langtype 0 and 6)
 	const struct PACKET_CA_EXE_HASHCHECK *packet = RP2PTR(fd);
 	sd->has_client_hash = 1;
 	memcpy(sd->client_hash, packet->HashValue, 16);
-	RFIFOSKIP(fd,sizeof(*packet));
+	return PACKET_VALID;
 }
 
-// CA_LOGIN
-void login_parse_CA_LOGIN(int fd, struct login_session_data *sd) __attribute__((nonnull (2)));
-void login_parse_CA_LOGIN(int fd, struct login_session_data *sd)
+DEFPACKET(CA_LOGIN)
 {
+	// S 0064 <version>.L <username>.24B <password>.24B <clienttype>.B
 	const struct PACKET_CA_LOGIN *packet = RP2PTR(fd);
 
 	sd->version = packet->Version;
@@ -1627,17 +1651,17 @@ void login_parse_CA_LOGIN(int fd, struct login_session_data *sd)
 	safestrncpy(sd->userid, packet->ID, NAME_LENGTH);
 	safestrncpy(sd->passwd, packet->Passwd, PASSWD_LEN);
 
-	RFIFOSKIP(fd, sizeof(*packet));
-
 	if (login->config->use_md5_passwds)
 		MD5_String(sd->passwd, sd->passwd);
 	sd->passwdenc = PWENC_NONE;
+
+	login->client_login(fd, sd);
+	return PACKET_VALID;
 }
 
-// CA_LOGIN2
-void login_parse_CA_LOGIN2(int fd, struct login_session_data *sd) __attribute__((nonnull (2)));
-void login_parse_CA_LOGIN2(int fd, struct login_session_data *sd)
+DEFPACKET(CA_LOGIN2)
 {
+	// S 01dd <version>.L <username>.24B <password hash>.16B <clienttype>.B
 	const struct PACKET_CA_LOGIN2 *packet = RP2PTR(fd);
 
 	sd->version = packet->Version;
@@ -1646,13 +1670,13 @@ void login_parse_CA_LOGIN2(int fd, struct login_session_data *sd)
 	bin2hex(sd->passwd, packet->PasswdMD5, 16);
 	sd->passwdenc = PASSWORDENC;
 
-	RFIFOSKIP(fd, sizeof(*packet));
+	login->client_login(fd, sd);
+	return PACKET_VALID;
 }
 
-// CA_LOGIN3
-void login_parse_CA_LOGIN3(int fd, struct login_session_data *sd) __attribute__((nonnull (2)));
-void login_parse_CA_LOGIN3(int fd, struct login_session_data *sd)
+DEFPACKET(CA_LOGIN3)
 {
+	// S 01fa <version>.L <username>.24B <password hash>.16B <clienttype>.B <?>.B(index of the connection in the clientinfo file (+10 if the command-line contains "pc"))
 	const struct PACKET_CA_LOGIN3 *packet = RP2PTR(fd);
 
 	sd->version = packet->Version;
@@ -1663,13 +1687,13 @@ void login_parse_CA_LOGIN3(int fd, struct login_session_data *sd)
 	bin2hex(sd->passwd, packet->PasswdMD5, 16);
 	sd->passwdenc = PASSWORDENC;
 
-	RFIFOSKIP(fd, sizeof(*packet));
+	login->client_login(fd, sd);
+	return PACKET_VALID;
 }
 
-// CA_LOGIN4
-void login_parse_CA_LOGIN4(int fd, struct login_session_data *sd) __attribute__((nonnull (2)));
-void login_parse_CA_LOGIN4(int fd, struct login_session_data *sd)
+DEFPACKET(CA_LOGIN4)
 {
+	// S 027c <version>.L <username>.24B <password hash>.16B <clienttype>.B <?>.13B(junk)
 	const struct PACKET_CA_LOGIN4 *packet = RP2PTR(fd);
 
 	sd->version = packet->Version;
@@ -1680,13 +1704,13 @@ void login_parse_CA_LOGIN4(int fd, struct login_session_data *sd)
 	bin2hex(sd->passwd, packet->PasswdMD5, 16);
 	sd->passwdenc = PASSWORDENC;
 
-	RFIFOSKIP(fd, sizeof(*packet));
+	login->client_login(fd, sd);
+	return PACKET_VALID;
 }
 
-// CA_LOGIN_PCBANG
-void login_parse_CA_LOGIN_PCBANG(int fd, struct login_session_data *sd) __attribute__((nonnull (2)));
-void login_parse_CA_LOGIN_PCBANG(int fd, struct login_session_data *sd)
+DEFPACKET(CA_LOGIN_PCBANG)
 {
+	// S 0277 <version>.L <username>.24B <password>.24B <clienttype>.B <ip address>.16B <adapter address>.13B
 	const struct PACKET_CA_LOGIN_PCBANG *packet = RP2PTR(fd);
 
 	sd->version = packet->Version;
@@ -1697,17 +1721,17 @@ void login_parse_CA_LOGIN_PCBANG(int fd, struct login_session_data *sd)
 	safestrncpy(sd->userid, packet->ID, NAME_LENGTH);
 	safestrncpy(sd->passwd, packet->Passwd, PASSWD_LEN);
 
-	RFIFOSKIP(fd, sizeof(*packet));
-
 	if (login->config->use_md5_passwds)
 		MD5_String(sd->passwd, sd->passwd);
 	sd->passwdenc = PWENC_NONE;
+
+	login->client_login(fd, sd);
+	return PACKET_VALID;
 }
 
-// CA_LOGIN_HAN
-void login_parse_CA_LOGIN_HAN(int fd, struct login_session_data *sd) __attribute__((nonnull (2)));
-void login_parse_CA_LOGIN_HAN(int fd, struct login_session_data *sd)
+DEFPACKET(CA_LOGIN_HAN)
 {
+	// S 02b0 <version>.L <username>.24B <password>.24B <clienttype>.B <ip address>.16B <adapter address>.13B <g_isGravityID>.B
 	const struct PACKET_CA_LOGIN_HAN *packet = RP2PTR(fd);
 
 	sd->version = packet->Version;
@@ -1719,24 +1743,25 @@ void login_parse_CA_LOGIN_HAN(int fd, struct login_session_data *sd)
 	safestrncpy(sd->userid, packet->ID, NAME_LENGTH);
 	safestrncpy(sd->passwd, packet->Passwd, PASSWD_LEN);
 
-	RFIFOSKIP(fd, sizeof(*packet));
-
 	if (login->config->use_md5_passwds)
 		MD5_String(sd->passwd, sd->passwd);
 	sd->passwdenc = PWENC_NONE;
+
+	login->client_login(fd, sd);
+	return PACKET_VALID;
 }
 
-// CA_SSO_LOGIN_REQ
-bool login_parse_CA_SSO_LOGIN_REQ(int fd, struct login_session_data *sd) __attribute__((nonnull (2)));
-bool login_parse_CA_SSO_LOGIN_REQ(int fd, struct login_session_data *sd)
+DEFPACKET(CA_SSO_LOGIN_REQ)
 {
+	// S 0825 <packetsize>.W <version>.L <clienttype>.B <userid>.24B <password>.27B <mac>.17B <ip>.15B <token>.(packetsize - 0x5C)B
 	// Shinryo: For the time being, just use token as password.
 	const struct PACKET_CA_SSO_LOGIN_REQ *packet = RP2PTR(fd);
 	int tokenlen = (int)RFIFOREST(fd) - (int)sizeof(*packet);
 
 	if (strlen(packet->ID) > PASSWD_LEN || tokenlen <= 0) {
-		RFIFOSKIP(fd, RFIFOREST(fd)); // assume no other packet was sent
-		return false;
+		ShowError("PACKET_CA_SSO_LOGIN_REQ: Token length is not between allowed password length, kicking player ('%s')", packet->ID);
+		sockt->eof(fd);
+		return PACKET_VALID;
 	}
 
 	sd->clienttype = packet->clienttype;
@@ -1744,50 +1769,21 @@ bool login_parse_CA_SSO_LOGIN_REQ(int fd, struct login_session_data *sd)
 	safestrncpy(sd->userid, packet->ID, NAME_LENGTH);
 	safestrncpy(sd->passwd, packet->t1, min(tokenlen + 1, PASSWD_LEN)); // Variable-length field, don't copy more than necessary
 
-	RFIFOSKIP(fd, sizeof(*packet));
-
 	if (login->config->use_md5_passwds)
 		MD5_String(sd->passwd, sd->passwd);
 	sd->passwdenc = PWENC_NONE;
-	return true;
+
+	login->client_login(fd, sd);
+	return PACKET_VALID;
 }
 
-bool login_parse_client_login(int fd, struct login_session_data* sd, const char *const ip) __attribute__((nonnull (2)));
-bool login_parse_client_login(int fd, struct login_session_data* sd, const char *const ip)
+bool login_client_login(int fd, struct login_session_data *sd) __attribute__((nonnull (2)));
+bool login_client_login(int fd, struct login_session_data *sd)
 {
 	int result;
-	uint16 command = RFIFOW(fd,0);
-
-	switch (command) {
-	case PACKET_ID_CA_SSO_LOGIN_REQ:
-		if (!login_parse_CA_SSO_LOGIN_REQ(fd, sd)) {
-			login->auth_failed(sd, 3);
-			return true;
-		}
-		break;
-	case PACKET_ID_CA_LOGIN:
-		login_parse_CA_LOGIN(fd, sd);
-		break;
-	case PACKET_ID_CA_LOGIN2:
-		login_parse_CA_LOGIN2(fd, sd);
-		break;
-	case PACKET_ID_CA_LOGIN3:
-		login_parse_CA_LOGIN3(fd, sd);
-		break;
-	case PACKET_ID_CA_LOGIN4:
-		login_parse_CA_LOGIN4(fd, sd);
-		break;
-	case PACKET_ID_CA_LOGIN_PCBANG:
-		login_parse_CA_LOGIN_PCBANG(fd, sd);
-		break;
-	case PACKET_ID_CA_LOGIN_HAN:
-		login_parse_CA_LOGIN_HAN(fd, sd);
-		break;
-	default:
-		RFIFOSKIP(fd,RFIFOREST(fd)); // assume no other packet was sent
-		login->auth_failed(sd, 3); // send "rejected from server"
-		return true;
-	}
+	char ip[16];
+	uint32 ipl = sockt->session[fd]->client_addr;
+	sockt->ip2str(ipl, ip);
 
 	ShowStatus("Request for connection %sof %s (ip: %s).\n", sd->passwdenc == PASSWORDENC ? " (passwdenc mode)" : "", sd->userid, ip);
 
@@ -1797,7 +1793,6 @@ bool login_parse_client_login(int fd, struct login_session_data* sd, const char 
 	}
 
 	result = login->mmo_auth(sd, false);
-
 	if( result == -1 )
 		login->auth_ok(sd);
 	else
@@ -1819,16 +1814,14 @@ void login_send_coding_key(int fd, struct login_session_data* sd)
 	WFIFOSET(fd, size);
 }
 
-// CA_REQ_HASH
-void login_parse_request_coding_key(int fd, struct login_session_data* sd) __attribute__((nonnull (2)));
-void login_parse_request_coding_key(int fd, struct login_session_data* sd)
+DEFPACKET(CA_REQ_HASH)
 {
-	RFIFOSKIP(fd, sizeof(struct PACKET_CA_REQ_HASH));
 	memset(sd->md5key, '\0', sizeof(sd->md5key));
 	sd->md5keylen = (uint16)(12 + rnd() % 4);
 	MD5_Salt(sd->md5keylen, sd->md5key);
 
 	login->send_coding_key(fd, sd);
+	return PACKET_VALID;
 }
 
 void login_char_server_connection_status(int fd, struct login_session_data* sd, uint8 status) __attribute__((nonnull (2)));
@@ -1840,7 +1833,17 @@ void login_char_server_connection_status(int fd, struct login_session_data* sd, 
 	WFIFOSET(fd,3);
 }
 
-// CA_CHARSERVERCONNECT
+DEFPACKET(CA_CHARSERVERCONNECT)
+{
+	char ip[16];
+	uint32 ipl = sockt->session[fd]->client_addr;
+	sockt->ip2str(ipl, ip);
+
+	login->parse_request_connection(fd, sd, ip, ipl);
+
+	return PACKET_STOPPARSE;
+}
+
 void login_parse_request_connection(int fd, struct login_session_data* sd, const char *const ip, uint32 ipl) __attribute__((nonnull (2, 3)));
 void login_parse_request_connection(int fd, struct login_session_data* sd, const char *const ip, uint32 ipl)
 {
@@ -1901,6 +1904,25 @@ void login_parse_request_connection(int fd, struct login_session_data* sd, const
 	}
 }
 
+struct login_packet_db *login_lclif_packet(int16 packet_id)
+{
+	if (packet_id == PACKET_ID_CA_CHARSERVERCONNECT)
+		return &packet_db[0];
+
+	if (packet_id > MAX_PACKET_DB || packet_id < MIN_PACKET_DB)
+		return NULL;
+
+	return &packet_db[packet_id];
+}
+
+int login_parse_packet(struct login_packet_db *lpd, int fd, struct login_session_data *sd)
+{
+	int result;
+	result = lpd->pFunc(fd, sd);
+	RFIFOSKIP(fd, (lpd->len == -1) ? RFIFOW(fd, 2) : lpd->len);
+	return result;
+}
+
 //----------------------------------------------------------------------------------------
 // Default packet parsing (normal players or char-server connection requests)
 //----------------------------------------------------------------------------------------
@@ -1934,93 +1956,86 @@ int login_parse_login(int fd)
 	}
 
 	while (RFIFOREST(fd) >= 2) {
+		enum parsefunc_rcode result;
 		int16 packet_id = RFIFOW(fd, 0);
 		int packet_len = (int)RFIFOREST(fd);
 
 		if (packet_len < 2)
 			return 0;
 
-		if (VECTOR_LENGTH(HPM->packets[hpParse_Login]) > 0) {
-			int result = HPM->parse_packets(fd, packet_id, hpParse_Login);
-			if (result == 1)
-				continue;
-			if (result == 2)
-				return 0;
-		}
+		result = login->parse_login_sub(fd, sd);
 
-		switch (packet_id) {
-		case PACKET_ID_CA_CONNECT_INFO_CHANGED: // New alive packet: structure: 0x200 <account.userid>.24B. used to verify if client is always alive.
-			if (packet_len < (int)sizeof(struct PACKET_CA_CONNECT_INFO_CHANGED))
-				return 0;
-			login->parse_ping(fd, sd);
-			break;
-		case PACKET_ID_CA_EXE_HASHCHECK: // S 0204 <md5 hash>.16B (kRO 2004-05-31aSakexe langtype 0 and 6)
-			if (packet_len < (int)sizeof(struct PACKET_CA_EXE_HASHCHECK))
-				return 0;
-			login->parse_client_md5(fd, sd);
-			break;
-		case PACKET_ID_CA_LOGIN: // S 0064 <version>.L <username>.24B <password>.24B <clienttype>.B
-			if (packet_len < (int)sizeof(struct PACKET_CA_LOGIN))
-				return 0;
-			if (login->parse_client_login(fd, sd, ip))
-				return 0;
-			break;
-		case PACKET_ID_CA_LOGIN_PCBANG: // S 0277 <version>.L <username>.24B <password>.24B <clienttype>.B <ip address>.16B <adapter address>.13B
-			if (packet_len < (int)sizeof(struct PACKET_CA_LOGIN_PCBANG))
-				return 0;
-			if (login->parse_client_login(fd, sd, ip))
-				return 0;
-			break;
-		case PACKET_ID_CA_LOGIN_HAN: // S 02b0 <version>.L <username>.24B <password>.24B <clienttype>.B <ip address>.16B <adapter address>.13B <g_isGravityID>.B
-			if (packet_len < (int)sizeof(struct PACKET_CA_LOGIN_HAN))
-				return 0;
-			if (login->parse_client_login(fd, sd, ip))
-				return 0;
-			break;
-		case PACKET_ID_CA_LOGIN2: // S 01dd <version>.L <username>.24B <password hash>.16B <clienttype>.B
-			if (packet_len < (int)sizeof(struct PACKET_CA_LOGIN2))
-				return 0;
-			if (login->parse_client_login(fd, sd, ip))
-				return 0;
-			break;
-		case PACKET_ID_CA_LOGIN3: // S 01fa <version>.L <username>.24B <password hash>.16B <clienttype>.B <?>.B(index of the connection in the clientinfo file (+10 if the command-line contains "pc"))
-			if (packet_len < (int)sizeof(struct PACKET_CA_LOGIN3))
-				return 0;
-			if (login->parse_client_login(fd, sd, ip))
-				return 0;
-			break;
-		case PACKET_ID_CA_LOGIN4: // S 027c <version>.L <username>.24B <password hash>.16B <clienttype>.B <?>.13B(junk)
-			if (packet_len < (int)sizeof(struct PACKET_CA_LOGIN4))
-				return 0;
-			if (login->parse_client_login(fd, sd, ip))
-				return 0;
-			break;
-		case PACKET_ID_CA_SSO_LOGIN_REQ: // S 0825 <packetsize>.W <version>.L <clienttype>.B <userid>.24B <password>.27B <mac>.17B <ip>.15B <token>.(packetsize - 0x5C)B
-			if (packet_len < (int)sizeof(struct PACKET_CA_SSO_LOGIN_REQ) || packet_len < RFIFOW(fd, 2))
-				return 0;
-			if (login->parse_client_login(fd, sd, ip))
-				return 0;
-			break;
-		case PACKET_ID_CA_REQ_HASH:
-			if (packet_len < (int)sizeof(struct PACKET_CA_REQ_HASH))
-				return 0;
-			login->parse_request_coding_key(fd, sd);
-			break;
-		case PACKET_ID_CA_CHARSERVERCONNECT:
-			if (packet_len < (int)sizeof(struct PACKET_CA_CHARSERVERCONNECT))
-				return 0;
-			login->parse_request_connection(fd, sd, ip, ipl);
-			return 0; // processing will continue elsewhere
-		default:
-			ShowNotice("Abnormal end of connection (ip: %s): Unknown packet 0x%x\n", ip, (unsigned int)packet_id);
+		switch (result) {
+		case PACKET_SKIP:
+			continue;
+		case PACKET_INCOMPLETE:
+		case PACKET_STOPPARSE:
+			return 0;
+		case PACKET_UNKNOWN:
+			ShowWarning("login_parse_login: Received unsupported packet (packet 0x%04x, %d bytes received), disconnecting session #%d.\n", (unsigned int)packet_id, packet_len, fd);
+#ifdef DUMP_INVALID_PACKET
+			ShowDump(RFIFOP(fd, 0), RFIFOREST(fd));
+#endif
+			sockt->eof(fd);
+			return 0;
+		case PACKET_INVALIDLENGTH:
+			ShowWarning("login_parse_login: Received packet 0x%04x specifies invalid packet_len (%d), disconnecting session #%d.\n", (unsigned int)packet_id, packet_len, fd);
+#ifdef DUMP_INVALID_PACKET
+			ShowDump(RFIFOP(fd, 0), RFIFOREST(fd));
+#endif
 			sockt->eof(fd);
 			return 0;
 		}
 	}
-
 	return 0;
 }
 
+enum parsefunc_rcode login_parse_login_sub(int fd, struct login_session_data *sd)
+{
+	int packet_len = (int)RFIFOREST(fd);
+	int16 packet_id = RFIFOW(fd, 0);
+	struct login_packet_db *lpd;
+
+	if (VECTOR_LENGTH(HPM->packets[hpParse_Login]) > 0) {
+		int result = HPM->parse_packets(fd, packet_id, hpParse_Login);
+		if (result == 1)
+			return PACKET_VALID;
+		if (result == 2)
+			return PACKET_INCOMPLETE; // Packet not completed yet
+	}
+
+	lpd = login_lclif_packet(packet_id);
+
+	if (lpd == NULL)
+		return PACKET_UNKNOWN;
+
+	if (lpd->len == 0)
+		return PACKET_UNKNOWN;
+
+	if (lpd->len > 0 && lpd->pFunc == NULL)
+		return PACKET_UNKNOWN; //This Packet is defined for length purpose ? should never be sent from client ?
+
+	if (lpd->len == -1) {
+		uint16 packet_var_len = 0; //Max Variable Packet length is signed int16 size
+
+		if (packet_len < 4)
+			return PACKET_INCOMPLETE; //Packet incomplete
+
+		packet_var_len = RFIFOW(fd, 2);
+
+		if (packet_var_len < 4 || packet_var_len > SINT16_MAX)
+			return PACKET_INVALIDLENGTH; //Something is wrong, close connection.
+
+		if (RFIFOREST(fd) < packet_var_len)
+			return PACKET_INCOMPLETE; //Packet incomplete again.
+
+		return login->parse_packet(lpd, fd, sd);
+	} else if (lpd->len <= packet_len) {
+		return login->parse_packet(lpd, fd, sd);
+	}
+
+	return PACKET_VALID;
+}
 
 void login_config_set_defaults(void)
 {
@@ -2289,6 +2304,41 @@ void cmdline_args_init_local(void)
 	CMDLINEARG_DEF2(net-config, netconfig, "Alternative subnet configuration.", CMDLINE_OPT_PARAM);
 }
 
+void packetdb_loaddb(void)
+{
+	int i;
+	struct packet {
+		int16 packet_id;
+		int16 packet_len;
+		int (*pFunc)(int, struct login_session_data *);
+	} packet[] = {
+		packet_def(CA_CONNECT_INFO_CHANGED),
+		packet_def(CA_EXE_HASHCHECK),
+		packet_def(CA_LOGIN),
+		packet_def(CA_LOGIN2),
+		packet_def(CA_LOGIN3),
+		packet_def(CA_LOGIN4),
+		packet_def(CA_LOGIN_PCBANG),
+		packet_def(CA_LOGIN_HAN),
+		packet_def2(CA_SSO_LOGIN_REQ, -1),
+		packet_def(CA_REQ_HASH),
+	};
+	int length = ARRAYLENGTH(packet);
+
+	memset(packet_db, '\0', sizeof(packet_db));
+
+	for (i = 0; i < length; ++i) {
+		int16 packet_id = packet[i].packet_id;
+		Assert_retb(packet_id >= MIN_PACKET_DB && packet_id < MAX_PACKET_DB);
+		packet_db[packet_id].len = packet[i].packet_len;
+		packet_db[packet_id].pFunc = packet[i].pFunc;
+	}
+
+	//Explict case, we will save character login packet in position 0 which is unused and not valid by normal
+	packet_db[0].len = sizeof(struct PACKET_CA_CHARSERVERCONNECT);
+	packet_db[0].pFunc = login_parse_CA_CHARSERVERCONNECT;
+}
+
 //------------------------------
 // Login server initialization
 //------------------------------
@@ -2320,6 +2370,8 @@ int do_init(int argc, char** argv)
 	cmdline->exec(argc, argv, CMDLINE_OPT_NORMAL);
 	login_config_read(login->LOGIN_CONF_NAME);
 	sockt->net_config_read(login->NET_CONF_NAME);
+
+	packetdb_loaddb();
 
 	for( i = 0; i < ARRAYLENGTH(server); ++i )
 		chrif_server_init(i);
@@ -2432,11 +2484,6 @@ void login_defaults(void) {
 
 	login->parse_fromchar = login_parse_fromchar;
 	login->parse_login = login_parse_login;
-	login->parse_ping = login_parse_ping;
-	login->parse_client_md5 = login_parse_client_md5;
-	login->parse_client_login = login_parse_client_login;
-	login->parse_request_coding_key = login_parse_request_coding_key;
-	login->parse_request_connection = login_parse_request_connection;
 	login->auth_ok = login_auth_ok;
 	login->auth_failed = login_auth_failed;
 	login->char_server_connection_status = login_char_server_connection_status;
@@ -2449,4 +2496,7 @@ void login_defaults(void) {
 	login->config_read = login_config_read;
 	login->LOGIN_CONF_NAME = NULL;
 	login->NET_CONF_NAME = NULL;
+
+	login->parse_packet = login_parse_packet;
+	login->parse_login_sub = login_parse_login_sub;
 }
